@@ -3,8 +3,8 @@
 #include <fstream>
 #include <vector>
 #include <deque>
-
-void update_least_cost(std::vector<unsigned> &flc, std::vector<unsigned> &slc, unsigned d);
+#include <limits>
+#include <utility>
 
 int main()
 {
@@ -42,6 +42,7 @@ int main()
 			for (int j = 0; j < d; j++)
 				total_cost.at(i) += cost.at(i).at(j);
 
+		// Cari index dari first least dan second least di setiap kolom
 		std::vector<unsigned> indexof_flc(d);
 		std::vector<unsigned> indexof_slc(d);
 		for (int i = 0; i < d; i++)
@@ -119,7 +120,60 @@ int main()
 		}
 
 		// Hitung difference pada ER
-		std::vector<long long> difference(d);
+		std::vector<std::vector<long long>> difference(s, std::vector<long long>(d));
+		for (unsigned i = 0; i < s; i++)
+		{
+			if (status.at(i) != 2)
+				continue;
+
+			for (unsigned j = 0; j < d; j++)
+			{
+				if (allocation.at(i).at(j) != 0)
+				{
+					difference.at(i).at(j) = cost.at(indexof_slc.at(j)).at(j) - cost.at(indexof_flc.at(j)).at(j);
+				}
+			}
+		}
+
+		// Cari sel yang akan dipindah, i.e. diff terkecil
+		std::deque<std::pair<unsigned, unsigned>> possibles_coord;
+		unsigned selected_x, selected_y;
+		for (unsigned i = 0; i < s; i++)
+		{
+			if (status.at(i) != 2)
+				continue;
+			
+			long long smallest_diff = std::numeric_limits<long long>::max();
+			for (unsigned j = 0; j < d; j++)
+			{
+				if (difference.at(i).at(j) != 0 && difference.at(i).at(j) <= smallest_diff)
+				{
+					smallest_diff = difference.at(i).at(j);
+					while (difference.at(possibles_coord.front().first).at(possibles_coord.front().second) > smallest_diff)
+						possibles_coord.pop_front();
+					possibles_coord.push_back(std::make_pair(i, j));
+				}
+			}
+		}
+		if (possibles_coord.size() > 1)
+		{
+			unsigned smallest_demand = std::numeric_limits<unsigned>::max();
+			for (auto &i : possibles_coord)
+			{
+				if (demand.at(i.second) < smallest_demand)
+				{
+					smallest_demand = demand.at(i.second);
+					selected_x = i.first;
+					selected_y = i.second;
+				}
+			}
+		}
+		else
+		{
+			selected_x = possibles_coord.front().first;
+			selected_y = possibles_coord.front().second;
+		}
+		
 	}
 	closedir(dp);
 
