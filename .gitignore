@@ -31,5 +31,6 @@
 *.out
 *.app
 
-# VSCode specific files
+# Project specific files
 .vscode
+soal
