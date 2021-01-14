@@ -1,7 +1,6 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <deque>
 #include <limits>
 #include <utility>
 #include <chrono>
@@ -15,15 +14,17 @@ int main()
 	dirent *entry = nullptr;
 	DIR *dp = nullptr;
 	std::string soaldir(".\\soal");
+	std::string jawabdir(".\\jawab");
 	dp = opendir(soaldir.c_str());
 	enum class row_status { SATISFIED, NOT_SATISFIED, EXCESS_ROW };
-	std::ofstream out(".\\res.txt");
 	while ((entry = readdir(dp)) != nullptr)
 	{
 		std::string name(entry->d_name);
 		if (name == "." || name == "..")
 			continue;
 		std::ifstream inp(soaldir + '\\' + name);
+		std::ofstream jwb(jawabdir + '\\' + name);
+		std::string buffer;
 		int s, d;
 		inp >> s >> d;
 
@@ -41,23 +42,9 @@ int main()
 		for (auto &i : demand)
 			inp >> i;
 
-		// Cek apakah supply == demand
-		long long total_supply = std::accumulate(supply.begin(), supply.end(), 0);
-		long long total_demand = std::accumulate(demand.begin(), demand.end(), 0);
-		if (total_supply > total_demand)
-		{
-			for (auto &i : cost)
-				i.push_back(0);
-			demand.push_back(total_supply - total_demand);
-			d++;
-		}
-		else if (total_supply < total_demand)
-		{
-			cost.push_back(std::vector<int>(d));
-			supply.push_back(total_demand - total_supply);
-			s++;
-		}
-
+		// Mulai
+		const auto start = std::chrono::steady_clock::now();
+		
 		// Hitung total cost setiap baris
 		std::vector<int> total_cost(s, 0);
 		for (int i = 0; i < s; i++)
@@ -112,9 +99,7 @@ int main()
 			// Tandai supply yang ER
 			for (int i = 0; i < s; i++)
 			{
-				long long total_alloc = 0;
-				for (int j = 0; j < d; j++)
-					total_alloc += allocation.at(i).at(j);
+				long long total_alloc = std::accumulate(allocation.at(i).begin(), allocation.at(i).end(), 0);
 				if (total_alloc > supply.at(i))
 					status.at(i) = row_status::EXCESS_ROW;
 			}
@@ -133,7 +118,10 @@ int main()
 						continue;
 
 					int flc = cost.at(i).at(j);
-					int slc = cost.at(least.at(rank.at(i).at(j) + 1).at(j)).at(j);
+					int slc_row = least.at(rank.at(i).at(j) + 1).at(j);
+					for (int k = 2; k < s - rank.at(i).at(j) && (status.at(slc_row) == row_status::SATISFIED || status.at(slc_row) == row_status::EXCESS_ROW); k++)
+						slc_row = least.at(rank.at(i).at(j) + k).at(j);
+					int slc = cost.at(slc_row).at(j);
 					long long diff = slc - flc;
 					if (diff < smallest_diff)
 					{
@@ -152,7 +140,7 @@ int main()
 
 			// Cari nilai12 dari flc dan slc
 			int slc_row = least.at(rank.at(selected_row).at(selected_column) + 1).at(selected_column);
-			for (int i = 2; i < d && status.at(slc_row) == row_status::SATISFIED; i++)
+			for (int i = 2; i < s - rank.at(selected_row).at(selected_column) && (status.at(slc_row) == row_status::SATISFIED || status.at(slc_row) == row_status::EXCESS_ROW); i++)
 				slc_row = least.at(rank.at(selected_row).at(selected_column) + i).at(selected_column);
 			long long nilai_flc = (total_cost.at(selected_row) - d * cost.at(selected_row).at(selected_column)) * cost.at(selected_row).at(selected_column);
 			long long nilai_slc = (total_cost.at(slc_row) - d * cost.at(slc_row).at(selected_column)) * cost.at(slc_row).at(selected_column);
@@ -173,41 +161,61 @@ int main()
 				allocation.at(slc_row).at(selected_column) += dipindah;
 			}
 
-			// Update status supply
+			// Cek status FLC
+			int current_alloc = std::accumulate(allocation.at(selected_row).begin(), allocation.at(selected_row).end(), 0);
+			if (current_alloc == supply.at(selected_row))
+				status.at(selected_row) = row_status::SATISFIED;
+			else if (current_alloc > supply.at(selected_row))
+				status.at(selected_row) = row_status::EXCESS_ROW;
+			else
+				status.at(selected_row) = row_status::NOT_SATISFIED;
+
+			// Cek status SLC
+			current_alloc = std::accumulate(allocation.at(slc_row).begin(), allocation.at(slc_row).end(), 0);
+			if (current_alloc == supply.at(slc_row))
+				status.at(slc_row) = row_status::SATISFIED;
+			else if (current_alloc > supply.at(slc_row))
+				status.at(slc_row) = row_status::EXCESS_ROW;
+			else
+				status.at(slc_row) = row_status::NOT_SATISFIED;
+
+			// Jika tidak ada ER, selesai
 			finished = true;
 			for (int i = 0; i < s; i++)
 			{
 				long long total_alloc = std::accumulate(allocation.at(i).begin(), allocation.at(i).end(), 0);
 				if (total_alloc > supply.at(i))
 				{
-					status.at(i) = row_status::EXCESS_ROW;
 					finished = false;
+					break;
 				}
-				else if (total_alloc == supply.at(i))
-					status.at(i) = row_status::SATISFIED;
 			}
-		}
-		std::cout << name << '\n';
-		for (int i = 0; i < s; i++)
-		{
-			for (int j = 0; j < d; j++)
+
+			// Append ke buffer jawaban
+			for (int i = 0; i < s; i++)
 			{
-				std::cout << cost.at(i).at(j);
-				if (allocation.at(i).at(j) != 0)
-					std:: cout << " (" << allocation.at(i).at(j) << ')';
-				std::cout << '\t';
+				for (int j = 0; j < d; j++)
+				{
+					buffer += std::to_string(cost.at(i).at(j));
+					if (allocation.at(i).at(j) != 0)
+						buffer += " (" + std::to_string(allocation.at(i).at(j)) + ")";
+					buffer += "\t\t";
+				}
+				buffer += std::to_string(supply.at(i)) + "\n";
 			}
-			std::cout << supply.at(i) << '\n';
+			for (const auto &i : demand)
+				buffer += std::to_string(i) + "\t\t";
+			buffer += "\n\n";
 		}
-		std::cout << '\t';
-		for (const auto &i : demand)
-			std::cout << i << '\t';
+		const auto end = std::chrono::steady_clock::now();
+		const std::chrono::duration<double, std::milli> elapsed = end - start;
 		long long obj_val = 0;
 		for (int i = 0; i < s; i++)
 			for (int j = 0; j < d; j++)
 				obj_val += allocation.at(i).at(j) * cost.at(i).at(j);
-		std::cout << "\nTotal: " << obj_val << "\n\n";
-		out << obj_val << '\n';
+		buffer += "Obj Val: " + std::to_string(obj_val) + "\n";
+		buffer += "Runtime: " + std::to_string(elapsed.count()) + "ms\n";
+		jwb << buffer;
 	}
 
 	return 0;
